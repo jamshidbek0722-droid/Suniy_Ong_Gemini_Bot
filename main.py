@@ -42,24 +42,32 @@ async def main():
     @dp.startup()
     async def on_startup(bot: Bot):
         # 1. Pull the pinned database document from channel
-        await db.initialize(bot)
+        try:
+            await db.initialize(bot)
+        except Exception as e:
+            logger.error(f"Failed to initialize database: {e}. Bot will run with in-memory database fallback.")
         
         # 2. Register the 6 core system commands natively in the client menu
-        commands = [
-            BotCommand(command="start", description="🚀 Botni ishga tushirish va AI bilan tanishuv"),
-            BotCommand(command="ai", description="🤖 Yangi suhbat oynasini ochish"),
-            BotCommand(command="clear", description="🔄 Chat tarixini (kontekstni) tozalash"),
-            BotCommand(command="contact", description="📩 Adminga xabar/taklif yo'llash"),
-            BotCommand(command="profile", description="👤 Shaxsiy AI Profilingiz"),
-            BotCommand(command="help", description="❓ Botdan foydalanish qo'llanmasi")
-        ]
-        await bot.set_my_commands(commands)
-        logger.info("Startup sequence complete. Commands registered and DB loaded.")
+        try:
+            commands = [
+                BotCommand(command="start", description="🚀 Botni ishga tushirish va AI bilan tanishuv"),
+                BotCommand(command="ai", description="🤖 Yangi suhbat oynasini ochish"),
+                BotCommand(command="clear", description="🔄 Chat tarixini (kontekstni) tozalash"),
+                BotCommand(command="contact", description="📩 Adminga xabar/taklif yo'llash"),
+                BotCommand(command="profile", description="👤 Shaxsiy AI Profilingiz"),
+                BotCommand(command="help", description="❓ Botdan foydalanish qo'llanmasi")
+            ]
+            await bot.set_my_commands(commands)
+            logger.info("Startup sequence complete. Commands registered and DB loaded.")
+        except Exception as e:
+            logger.error(f"Failed to set bot commands: {e}. Bot will continue starting up.")
 
     # Begin polling
     logger.info("Starting bot long polling...")
     try:
         await dp.start_polling(bot)
+    except Exception as e:
+        logger.critical(f"Critical error in bot polling loop: {e}")
     finally:
         await bot.session.close()
 
