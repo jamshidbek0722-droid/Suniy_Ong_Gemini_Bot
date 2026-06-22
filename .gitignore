@@ -1,0 +1,19 @@
+# Secrets and Environment configuration files
+.env
+
+# Python byte-compiled / cached files
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.pytest_cache/
+
+# Local databases or logs
+*.log
+index.json
+
+# IDE settings and editors
+.vscode/
+.idea/
+*.swp
+*.swo
