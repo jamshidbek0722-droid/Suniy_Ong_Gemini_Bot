@@ -8,8 +8,8 @@ logger = logging.getLogger(__name__)
 # Each message is a dict with keys "role" and "content"
 rolling_history: dict[int, list[dict]] = {}
 
-# DeepSeek Chat API completions endpoint
-DEEPSEEK_API_URL = "https://api.deepseek.com/chat/completions"
+# Groq Chat API completions endpoint
+GROQ_API_URL = "https://api.groq.com/openai/v1/chat/completions"
 
 # System instructions to enforce Uzbek language responses and assistant persona
 SYSTEM_PROMPT = {
@@ -44,12 +44,12 @@ async def get_ai_response(user_id: int, user_message: str) -> tuple[str, int]:
     payload_messages = [SYSTEM_PROMPT] + rolling_history[user_id]
     
     headers = {
-        "Authorization": f"Bearer {config.DEEPSEEK_API_KEY}",
+        "Authorization": f"Bearer {config.GROQ_API_KEY}",
         "Content-Type": "application/json"
     }
     
     payload = {
-        "model": "deepseek-chat",
+        "model": "llama-3.1-8b-instant",
         "messages": payload_messages,
         "temperature": 0.7,
         "max_tokens": 2048,
@@ -58,7 +58,7 @@ async def get_ai_response(user_id: int, user_message: str) -> tuple[str, int]:
 
     try:
         async with aiohttp.ClientSession() as session:
-            async with session.post(DEEPSEEK_API_URL, headers=headers, json=payload, timeout=30) as response:
+            async with session.post(GROQ_API_URL, headers=headers, json=payload, timeout=30) as response:
                 if response.status == 200:
                     data = await response.json()
                     ai_reply = data["choices"][0]["message"]["content"]
@@ -69,14 +69,14 @@ async def get_ai_response(user_id: int, user_message: str) -> tuple[str, int]:
                     return ai_reply, tokens_used
                 else:
                     error_text = await response.text()
-                    logger.error(f"DeepSeek API error (Status: {response.status}): {error_text}")
+                    logger.error(f"Groq API error (Status: {response.status}): {error_text}")
                     return (
                         "⚠️ Kechirasiz, sun'iy ong xizmatida vaqtincha uzilish yuz berdi. "
                         "Iltimos, birozdan so'ng qayta urinib ko'ring.", 0
                     )
     except Exception as e:
-        logger.error(f"Error calling DeepSeek API for user {user_id}: {e}")
-        return "⚠️ Tarmoq xatoligi yuz berdi. DeepSeek API bilan bog'lanib bo'lmadi.", 0
+        logger.error(f"Error calling Groq API for user {user_id}: {e}")
+        return "⚠️ Tarmoq xatoligi yuz berdi. Groq API bilan bog'lanib bo'lmadi.", 0
 
 def clear_history(user_id: int):
     """Clears the rolling chat history context for a specific user."""

@@ -18,9 +18,9 @@ try:
 except (TypeError, ValueError):
     raise ValueError("DATABASE_CHANNEL_ID is missing or not a valid integer in environment variables or .env file!")
 
-DEEPSEEK_API_KEY = os.getenv("DEEPSEEK_API_KEY")
-if not DEEPSEEK_API_KEY:
-    raise ValueError("DEEPSEEK_API_KEY is missing in environment variables or .env file!")
+GROQ_API_KEY = os.getenv("GROQ_API_KEY")
+if not GROQ_API_KEY:
+    raise ValueError("GROQ_API_KEY is missing in environment variables or .env file!")
 
 # Dedicated list of channels for forced subscription checking.
 # This list is independent of the secret DATABASE_CHANNEL_ID.
