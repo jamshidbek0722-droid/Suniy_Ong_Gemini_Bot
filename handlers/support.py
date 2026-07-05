@@ -6,7 +6,7 @@ from aiogram.types import Message, CallbackQuery
 from aiogram.fsm.context import FSMContext
 from states.states import SupportState
 from keyboards.reply import get_cancel_menu, get_main_menu
-from keyboards.inline import get_support_keyboard
+from keyboards.inline import get_support_keyboard, get_persona_keyboard
 from database import db
 import config
 
@@ -23,20 +23,21 @@ async def show_help_and_contact(message: Message, state: FSMContext):
     await state.clear()
     
     help_text = (
-        "❓ *Botdan foydalanish qo'llanmasi:*\n\n"
-        "• *🤖 AI bilan Suhbat* — DeepSeek AI bilan yangi muloqot rejimini faollashtiradi.\n"
-        "• *🔄 Suhbatni Yangilash* (/clear) — Rolling suhbat xotirasini butunlay tozalaydi.\n"
-        "• *🔍 Savollar Tarixi* — Xotiradagi xabarlar holatini ko'rsatadi.\n"
-        "• *👤 Mening Profilim* (/profile) — AI profil ma'lumotlarini to'ldirish yoki yangilash.\n"
-        "• *📩 Adminga Murojaat* (/contact) — Muammolar yoki takliflar bo'yicha yozish.\n\n"
-        "📖 *Tizim Buyruqlari:*\n"
+        "❓ **Botdan foydalanish qo'llanmasi:**\n\n"
+        "• **🤖 AI bilan Suhbat** — Sun'iy ong bilan muloqot rejimini faollashtiradi.\n"
+        "• **🔄 Suhbatni Yangilash** (/clear, /reset) — Suhbat xotirasini butunlay tozalaydi.\n"
+        "• **🔍 Savollar Tarixi** — Xotiradagi xabarlar holatini ko'rsatadi.\n"
+        "• **👤 Mening Profilim** (/profile) — AI profil ma'lumotlari va balansingizni ko'rish.\n"
+        "• **⚙️ Sozlamalar / Yordam** — AI shaxsiyatini o'zgartirish va murojaat yo'llash.\n\n"
+        "📖 **Tizim Buyruqlari:**\n"
         "/start - Botni ishga tushirish\n"
         "/ai - AI chat rejimiga kirish\n"
         "/clear - Tarixni tozalash\n"
+        "/reset - Tarixni tozalash\n"
         "/contact - Adminga xabar yo'llash\n"
         "/profile - Profil ma'lumotlari\n"
         "/help - Yordam qo'llanmasi\n\n"
-        "Agar bot ishlashida xatolik topsangiz yoki taklifingiz bo'lsa, pastdagi tugmani bosing 👇"
+        "AI shaxsiyatini o'zgartirish yoki adminga savol yuborish uchun quyidagi tugmalardan foydalaning 👇"
     )
     
     await message.answer(
@@ -44,6 +45,66 @@ async def show_help_and_contact(message: Message, state: FSMContext):
         reply_markup=get_support_keyboard(),
         parse_mode="Markdown"
     )
+
+@router.callback_query(F.data == "select_persona")
+async def trigger_persona_selection(callback: CallbackQuery):
+    """
+    Shows the inline persona selector with description of the currently selected mode.
+    """
+    user_id = callback.from_user.id
+    current_persona = db.get_user_persona(user_id)
+    
+    persona_labels = {
+        "standard": "Standard (Umumiy) ⚖️",
+        "scientific": "Ilmiy (Tahliliy) 🔬",
+        "empathetic": "Do'stona (Iliq) 🤝",
+        "psychologist": "Psixolog (Maslahat) 🧠",
+        "creative": "Ijodkor (Badiiy) ✍️",
+        "concise": "Qisqa (Tezkor) 🎯"
+    }
+    
+    label = persona_labels.get(current_persona, "Standard (Umumiy) ⚖️")
+    
+    await callback.message.edit_text(
+        text=(
+            "🎭 **AI Shaxsiyatini Tanlash**\n\n"
+            f"Hozirgi faol shaxsiyat: **{label}**\n\n"
+            "Quyidagi rejimlardan birini tanlang. Tanlangan shaxsiyat botning "
+            "fikrlash tizimi, muloqot ohangi va javob uslubini butunlay o'zgartiradi:"
+        ),
+        reply_markup=get_persona_keyboard(),
+        parse_mode="Markdown"
+    )
+    await callback.answer()
+
+@router.callback_query(F.data.startswith("setpersona_"))
+async def process_persona_change(callback: CallbackQuery):
+    """
+    Saves the user's selected persona in MongoDB/RAM database.
+    """
+    user_id = callback.from_user.id
+    selected_p = callback.data.split("_")[1]
+    
+    db.set_user_persona(user_id, selected_p)
+    await db.save(callback.bot)
+    
+    persona_labels = {
+        "standard": "Standard (Umumiy) ⚖️",
+        "scientific": "Ilmiy (Tahliliy) 🔬",
+        "empathetic": "Do'stona (Iliq) 🤝",
+        "psychologist": "Psixolog (Maslahat) 🧠",
+        "creative": "Ijodkor (Badiiy) ✍️",
+        "concise": "Qisqa (Tezkor) 🎯"
+    }
+    
+    label = persona_labels.get(selected_p, "Standard (Umumiy) ⚖️")
+    
+    await callback.message.edit_text(
+        text=f"✅ **AI shaxsiyati muvaffaqiyatli o'zgartirildi!**\n\nHozirgi faol shaxsiyat: **{label}**",
+        reply_markup=get_support_keyboard(),
+        parse_mode="Markdown"
+    )
+    await callback.answer()
 
 @router.callback_query(F.data == "contact_admin")
 async def start_contact_flow(callback: CallbackQuery, state: FSMContext):
@@ -63,8 +124,7 @@ async def start_contact_flow(callback: CallbackQuery, state: FSMContext):
 @router.message(SupportState.waiting_for_message)
 async def process_contact_message(message: Message, state: FSMContext):
     """
-    Processes support query from user. Forwards it to Admin ID.
-    Triggers DB save sync as feedback count shifts.
+    Processes support query from user. Forwards it to Owner ID.
     """
     text = message.text
     if text == "❌ Bekor qilish":
@@ -74,7 +134,6 @@ async def process_contact_message(message: Message, state: FSMContext):
     username = message.from_user.username or "mavjud emas"
     fullname = message.from_user.full_name
     
-    # Notify Admin
     admin_message_text = (
         f"📩 **Yangi Murojaat!**\n\n"
         f"👤 **Foydalanuvchi:** {fullname} (@{username})\n"
@@ -86,17 +145,13 @@ async def process_contact_message(message: Message, state: FSMContext):
     )
     
     try:
-        # Send to config.ADMIN_ID
         await message.bot.send_message(
-            chat_id=config.ADMIN_ID,
+            chat_id=config.OWNER_ID,
             text=admin_message_text,
             parse_mode="Markdown"
         )
         
-        # Increment message counts in memory
         db.increment_messages(user_id, tokens=0)
-        
-        # Sync database with channel (Sync trigger: custom feedback / contact)
         await db.save(message.bot)
         
         await message.answer(
@@ -113,7 +168,7 @@ async def process_contact_message(message: Message, state: FSMContext):
         )
         await state.clear()
 
-@router.message(F.chat.id == config.ADMIN_ID, F.reply_to_message)
+@router.message(F.chat.id == config.OWNER_ID, F.reply_to_message)
 async def handle_admin_reply(message: Message):
     """
     Listens for messages from the admin that are replies to forwarded user messages.
@@ -123,7 +178,6 @@ async def handle_admin_reply(message: Message):
     if not reply_text:
         return
         
-    # Search for user ID pattern: Ref ID: USR_(\d+)
     match = re.search(r"Ref ID: USR_(\d+)", reply_text)
     if not match:
         return

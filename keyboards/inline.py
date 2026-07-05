@@ -57,10 +57,52 @@ def get_profile_keyboard(completed: bool = False) -> InlineKeyboardMarkup:
 
 def get_support_keyboard() -> InlineKeyboardMarkup:
     """
-    Keyboard for Settings/Help displaying Support contact trigger.
+    Keyboard for Settings/Help displaying Support contact trigger and Persona selection.
     """
     builder = InlineKeyboardBuilder()
     builder.row(
-        InlineKeyboardButton(text="✍️ Adminga savol yo'llash", callback_data="contact_admin")
+        InlineKeyboardButton(text="🎭 AI Shaxsiyatini Tanlash", callback_data="select_persona")
+    )
+    builder.row(
+        InlineKeyboardButton(text="✍️ Adminga xabar yo'llash", callback_data="contact_admin")
+    )
+    return builder.as_markup()
+
+def get_persona_keyboard() -> InlineKeyboardMarkup:
+    """
+    Keyboard for selecting AI modes.
+    """
+    builder = InlineKeyboardBuilder()
+    builder.row(
+        InlineKeyboardButton(text="Standard (Umumiy) ⚖️", callback_data="setpersona_standard")
+    )
+    builder.row(
+        InlineKeyboardButton(text="Ilmiy (Tahliliy) 🔬", callback_data="setpersona_scientific")
+    )
+    builder.row(
+        InlineKeyboardButton(text="Do'stona (Iliq) 🤝", callback_data="setpersona_empathetic")
+    )
+    builder.row(
+        InlineKeyboardButton(text="Psixolog (Maslahat) 🧠", callback_data="setpersona_psychologist")
+    )
+    builder.row(
+        InlineKeyboardButton(text="Ijodkor (Badiiy) ✍️", callback_data="setpersona_creative")
+    )
+    builder.row(
+        InlineKeyboardButton(text="Qisqa (Tezkor) 🎯", callback_data="setpersona_concise")
+    )
+    return builder.as_markup()
+
+def get_limit_settings_keyboard(enabled: bool) -> InlineKeyboardMarkup:
+    """
+    Inline keyboard for managing global messaging limits.
+    """
+    builder = InlineKeyboardBuilder()
+    mode_text = "Limit: FAOL ✅" if enabled else "Limit: O'CHIRILGAN ❌"
+    builder.row(
+        InlineKeyboardButton(text=mode_text, callback_data="admin_toggle_limit")
+    )
+    builder.row(
+        InlineKeyboardButton(text="Limit Qiymatini O'zgartirish 🔢", callback_data="admin_change_limit")
     )
     return builder.as_markup()

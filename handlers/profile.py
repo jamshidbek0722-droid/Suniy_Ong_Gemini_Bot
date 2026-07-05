@@ -22,13 +22,20 @@ def format_profile_text(user_id: int) -> str:
     profile = user.get("profile", {})
     completed = profile.get("completed", False)
     
+    lim_cfg = db.get_limit_config()
+    limit_enabled = lim_cfg.get("limit_enabled", True) if lim_cfg else True
+    credits_line = ""
+    if limit_enabled:
+        credits_line = f"• **Xabar limitlari balansi:** `{user.get('message_credits', 0)}` ta\n"
+
     stats_text = (
         f"👤 *Sizning AI Profilingiz:*\n\n"
         f"• **Telegram ID:** `{user['id']}`\n"
         f"• **Foydalanuvchi nomi:** @{user['username'] or 'mavjud emas'}\n"
         f"• **Ro'yxatdan o'tgan sana:** `{user['join_date']}`\n"
         f"• **Yuborilgan xabarlar:** `{user['messages_sent']}` ta\n"
-        f"• **Sarflangan AI tokenlar:** `{user['tokens_used']}`\n\n"
+        f"• **Sarflangan AI tokenlar:** `{user['tokens_used']}`\n"
+        f"{credits_line}\n"
     )
     
     if completed:
@@ -42,7 +49,7 @@ def format_profile_text(user_id: int) -> str:
     else:
         details = (
             f"⚠️ **AI So'rovnoma to'ldirilmagan!**\n"
-            f"DeepSeek AI sizning qiziqishlaringizga mosroq javob berishi uchun "
+            f"Sun'iy Ong sizning qiziqishlaringizga mosroq javob berishi uchun "
             f"iltimos profilingizni to'ldiring."
         )
         

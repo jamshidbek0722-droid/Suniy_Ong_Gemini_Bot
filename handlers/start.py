@@ -1,3 +1,4 @@
+import logging
 from aiogram import Router, F
 from aiogram.filters import CommandStart, Command
 from aiogram.types import Message, CallbackQuery
@@ -6,32 +7,67 @@ from database import db
 from keyboards.reply import get_main_menu
 import config
 
+logger = logging.getLogger(__name__)
 router = Router()
 
 @router.message(CommandStart())
 @router.message(Command("start"))
 async def start_handler(message: Message, state: FSMContext):
     """
-    Handles the /start command. Registers the user in the RAM cache database
-    if they are not already registered, clears FSM state, and sends welcome message.
-    Trigger database save to channel if a new user registration occurs.
+    Handles the /start command. Supports referral links in the format /start ref_USERID.
+    Registers the user, clears FSM state, and sends welcome message.
     """
     await state.clear()
     user_id = message.from_user.id
     username = message.from_user.username
 
-    # Register user in RAM cache
-    is_new = db.register_user(user_id=user_id, username=username)
+    # Parse referral parameter
+    referred_by = None
+    args = message.text.split()
+    if len(args) > 1 and args[1].startswith("ref_"):
+        try:
+            referred_by = int(args[1].split("_")[1])
+        except (ValueError, IndexError):
+            pass
 
-    # Sync RAM to Telegram channel on first-time registration
+    # Register user (in MongoDB or fallback RAM Cache)
+    is_new, current_credits, rewarded_id, bonus_amount = db.register_user(
+        user_id=user_id,
+        username=username,
+        referred_by=referred_by
+    )
+
+    # Sync RAM cache to Telegram if backup mode is running
     if is_new:
         await db.save(message.bot)
+        # Notify the referrer of their credit bonus
+        if rewarded_id:
+            try:
+                await message.bot.send_message(
+                    chat_id=rewarded_id,
+                    text=(
+                        f"🎉 **Yangi do'st taklif qilindi!**\n\n"
+                        f"Siz taklif qilgan yangi a'zo botimizga qo'shildi. "
+                        f"Sizga **+{bonus_amount} ta** bepul xabar limiti qo'shildi."
+                    ),
+                    parse_mode="Markdown"
+                )
+            except Exception as e:
+                logger.warning(f"Failed to notify referrer {rewarded_id}: {e}")
+
+    # Fetch limits settings to show remaining credits
+    lim_cfg = db.get_limit_config()
+    limit_enabled = lim_cfg.get("limit_enabled", True) if lim_cfg else True
+
+    credits_info = ""
+    if limit_enabled:
+        credits_info = f"\n• Sizning balansingiz: *{current_credits} ta* bepul xabar."
 
     welcome_text = (
         f"🚀 *Assalomu alaykum, {message.from_user.first_name or 'Foydalanuvchi'}!*\n\n"
-        f"Men *DeepSeek AI* yordamida ishlaydigan sun'iy ong yordamchisiman. "
-        f"Menga xohlagan savolingizni bering va eng maqbul javoblarni oling.\n\n"
-        f"Botdan to'liq foydalanish uchun quyidagi menyuni ishlating 👇"
+        f"Men sizning shaxsiy sun'iy ong yordamchingizman. "
+        f"Menga istalgan savolingizni bering va eng to'g'ri javoblarni oling.{credits_info}\n\n"
+        f"Botdan foydalanish uchun quyidagi menyuni ishlating 👇"
     )
 
     await message.answer(
@@ -64,7 +100,7 @@ async def check_subscription_callback(callback: CallbackQuery, state: FSMContext
     user_id = callback.from_user.id
 
     # Admin bypasses FSub checking
-    if user_id == config.ADMIN_ID:
+    if user_id == config.OWNER_ID:
         await callback.answer("✅ Admin ruxsati berildi!", show_alert=True)
         try:
             await callback.message.delete()
@@ -85,12 +121,15 @@ async def check_subscription_callback(callback: CallbackQuery, state: FSMContext
                 is_subscribed = False
                 break
         except Exception:
-            # Skip check on exceptions (e.g. channel access/ID invalid)
+            # Skip check on exceptions
             continue
 
     if is_subscribed:
         # Register user if not already done
-        is_new = db.register_user(user_id=user_id, username=callback.from_user.username)
+        is_new, current_credits, rewarded_id, bonus_amount = db.register_user(
+            user_id=user_id,
+            username=callback.from_user.username
+        )
         if is_new:
             await db.save(callback.bot)
 

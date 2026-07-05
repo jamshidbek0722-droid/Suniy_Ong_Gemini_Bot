@@ -48,6 +48,10 @@ def get_admin_menu() -> ReplyKeyboardMarkup:
             KeyboardButton(text="📊 Analitika Panel"),
             KeyboardButton(text="📢 Footer O'zgartirish")
         ],
+        [
+            KeyboardButton(text="⚙️ Limitlarni Sozlash"),
+            KeyboardButton(text="📢 Reklama Jo'natish")
+        ],
         [KeyboardButton(text="❌ Bekor qilish")]
     ]
     return ReplyKeyboardMarkup(

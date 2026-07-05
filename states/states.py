@@ -18,3 +18,5 @@ class AIChatState(StatesGroup):
 class AdminState(StatesGroup):
     """States for admin operations."""
     waiting_for_footer = State()
+    waiting_for_broadcast = State()
+    waiting_for_limit_value = State()

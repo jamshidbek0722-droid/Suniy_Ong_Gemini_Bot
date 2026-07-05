@@ -1,53 +1,58 @@
 import logging
 import aiohttp
 import config
+from database import db
 
 logger = logging.getLogger(__name__)
-
-# Dictionary to hold rolling chat history in RAM: {user_id: [messages]}
-# Each message is a dict with keys "role" and "content"
-rolling_history: dict[int, list[dict]] = {}
 
 # Groq Chat API completions endpoint
 GROQ_API_URL = "https://api.groq.com/openai/v1/chat/completions"
 
-# System instructions to enforce Uzbek language responses and assistant persona
-SYSTEM_PROMPT = {
-    "role": "system",
-    "content": (
-        "Siz foydali, aqlli va samimiy AI yordamchisiz. "
-        "Foydalanuvchi bilan har doim 100% o'zbek tilida so'zlashing. "
-        "Javoblaringizda Markdown formatidan foydalanib, muhim joylarni qalin (bold) "
-        "va chiroyli ko'rinishda yozing."
-    )
+# Immutable base system instructions enforcing Uzbek language and stripping technical brands
+BASE_INSTRUCTIONS = (
+    "Foydalanuvchi bilan har doim 100% o'zbek tilida gaplashing. "
+    "Sizning ismingiz shunchaki 'Sun'iy Ong'. "
+    "JUDA MUHIM: Hech qachon o'zingizning Groq, DeepSeek, Meta, Llama, OpenAI yoki boshqa texnik arxitektura va brendlar tomonidan yaratilganingizni aytmang. "
+    "Agar sizdan arxitekturangiz, qanday model ekanligingiz yoki yaratuvchilaringiz haqida so'rashsa, hech qanday texnik brendlarni (masalan, Llama, Groq, DeepSeek) tilga olmasdan, shunchaki 'Men sizning shaxsiy sun'iy ong yordamchingizman' deb javob bering. "
+    "Biron bir texnologiya gigantlarini (Meta, Google, OpenAI, Microsoft va h.k.) o'zingizga aloqador deb ko'rsatmang. "
+    "Javoblaringizda Markdown formatidan foydalanib, muhim joylarni qalin (bold) va chiroyli yozing."
+)
+
+# Persona directives mapping
+PERSONA_DIRECTIVES = {
+    "standard": "Muvozanatlashgan, aniq va foydali yordamchi sifatida javob bering.",
+    "scientific": "Siz aniq ilmiy va chuqur tahliliy fikrlovchi olimsiz. Har bir savolga mantiqiy, ilmiy dalillar va chuqur tahlil bilan yondashing.",
+    "empathetic": "Siz hissiyotli, samimiy va iliq do'stona suhbatdoshsiz. Foydalanuvchiga samimiy muloqot va iliqlik bilan javob bering.",
+    "psychologist": "Siz professional psixologsiz. Foydalanuvchini diqqat bilan eshiting va professional psixologik maslahat hamda yordam bering.",
+    "creative": "Siz ijodkor yozuvchisiz. Kreativ hikoyalar, qiziqarli matnlar va badiiy asarlar yozishda ko'maklashing.",
+    "concise": "Siz juda qisqa va lo'nda javob beruvchi yordamchisiz. Faqat eng kerakli faktlarni qisqa va aniq ifodalang."
 }
 
 async def get_ai_response(user_id: int, user_message: str) -> tuple[str, int]:
     """
-    Sends the message to DeepSeek API along with rolling chat history.
-    Returns a tuple of (response_text, tokens_used).
+    Retrieves the chronological history from MongoDB/RAM, prepends the specific 
+    persona system prompts, queries Groq API, and updates the session chain.
+    Returns (response_text, tokens_used).
     """
-    # Initialize rolling history for user if not exists
-    if user_id not in rolling_history:
-        rolling_history[user_id] = []
+    # 1. Fetch user's persistent persona
+    persona = db.get_user_persona(user_id)
+    persona_directive = PERSONA_DIRECTIVES.get(persona, PERSONA_DIRECTIVES["standard"])
 
-    # Append user's new message to rolling history
-    rolling_history[user_id].append({"role": "user", "content": user_message})
+    # 2. Formulate the system instruction message
+    system_content = f"{BASE_INSTRUCTIONS}\n\nPersona yo'riqnomasi: {persona_directive}"
+    system_prompt = {"role": "system", "content": system_content}
 
-    # Enforce maximum rolling history of 15 messages (approx. 7 turns)
-    if len(rolling_history[user_id]) > 15:
-        # Dynamically slice history to keep only the last 15 messages to preserve RAM
-        rolling_history[user_id] = rolling_history[user_id][-15:]
-        logger.info(f"Cleaned older history chunks for user {user_id} to keep context size under 15.")
+    # 3. Retrieve sliding window history from database
+    history = db.get_chat_history(user_id)
 
-    # Prepare payload with the system prompt and rolling history
-    payload_messages = [SYSTEM_PROMPT] + rolling_history[user_id]
-    
+    # 4. Construct payload messages chain
+    payload_messages = [system_prompt] + history + [{"role": "user", "content": user_message}]
+
     headers = {
         "Authorization": f"Bearer {config.GROQ_API_KEY}",
         "Content-Type": "application/json"
     }
-    
+
     payload = {
         "model": "llama-3.1-8b-instant",
         "messages": payload_messages,
@@ -63,9 +68,11 @@ async def get_ai_response(user_id: int, user_message: str) -> tuple[str, int]:
                     data = await response.json()
                     ai_reply = data["choices"][0]["message"]["content"]
                     tokens_used = data.get("usage", {}).get("total_tokens", 0)
+
+                    # 5. Push both user prompt and assistant response to session memory database
+                    db.add_chat_message(user_id, "user", user_message)
+                    db.add_chat_message(user_id, "assistant", ai_reply)
                     
-                    # Append assistant reply to the rolling context
-                    rolling_history[user_id].append({"role": "assistant", "content": ai_reply})
                     return ai_reply, tokens_used
                 else:
                     error_text = await response.text()
@@ -77,9 +84,3 @@ async def get_ai_response(user_id: int, user_message: str) -> tuple[str, int]:
     except Exception as e:
         logger.error(f"Error calling Groq API for user {user_id}: {e}")
         return "⚠️ Tarmoq xatoligi yuz berdi. Groq API bilan bog'lanib bo'lmadi.", 0
-
-def clear_history(user_id: int):
-    """Clears the rolling chat history context for a specific user."""
-    if user_id in rolling_history:
-        del rolling_history[user_id]
-        logger.info(f"Rolling history cleared for user {user_id}")
